@@ -7,10 +7,15 @@ type UploadProps = {
     onComplete?: (base64Data: string) => void;
 }
 
+const ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png'];
+const ACCEPT_ATTRIBUTE = '.jpg,.jpeg,.png';
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
+
 const Upload = ({ onComplete = () => {} }: UploadProps) => {
     const [file, setFile] = useState<File | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const {isSignedIn} = useOutletContext<AuthContent>();
     const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -28,18 +33,54 @@ const Upload = ({ onComplete = () => {} }: UploadProps) => {
         }
     };
 
+    const validateSelectedFile = (selectedFile: File): string | null => {
+        if (!ACCEPTED_MIME_TYPES.includes(selectedFile.type)) {
+            return 'Only JPG and PNG files are supported.';
+        }
+
+        if (selectedFile.size > MAX_UPLOAD_SIZE) {
+            return 'File size must be 50 MB or less.';
+        }
+
+        return null;
+    };
+
     const processFile = (selectedFile: File) => {
         if (!isSignedIn) return;
 
+        const validationError = validateSelectedFile(selectedFile);
+        if (validationError) {
+            setErrorMessage(validationError);
+            return;
+        }
+
+        setErrorMessage(null);
         clearUploadTimers();
         setFile(selectedFile);
         setProgress(0);
 
         const reader = new FileReader();
+        const resetAfterReadFailure = (message: string) => {
+            clearUploadTimers();
+            setErrorMessage(message);
+            setFile(null);
+            setProgress(0);
+        };
+
+        reader.onerror = () => {
+            resetAfterReadFailure('Failed to read the selected file. Please try another image.');
+        };
+
+        reader.onabort = () => {
+            resetAfterReadFailure('File read was cancelled. Please try again.');
+        };
 
         reader.onload = () => {
             const base64Data = typeof reader.result === 'string' ? reader.result : '';
-            if (!base64Data) return;
+            if (!base64Data) {
+                resetAfterReadFailure('Failed to read the selected file. Please try another image.');
+                return;
+            }
 
             progressIntervalRef.current = setInterval(() => {
                 setProgress((prevProgress) => {
@@ -65,6 +106,13 @@ const Upload = ({ onComplete = () => {} }: UploadProps) => {
 
         const selectedFile = event.target.files?.[0];
         if (!selectedFile) return;
+
+        const validationError = validateSelectedFile(selectedFile);
+        if (validationError) {
+            setErrorMessage(validationError);
+            event.target.value = '';
+            return;
+        }
 
         processFile(selectedFile);
         event.target.value = '';
@@ -98,6 +146,13 @@ const Upload = ({ onComplete = () => {} }: UploadProps) => {
 
         const droppedFile = event.dataTransfer.files?.[0];
         if (!droppedFile) return;
+
+        const validationError = validateSelectedFile(droppedFile);
+        if (validationError) {
+            setErrorMessage(validationError);
+            return;
+        }
+
         processFile(droppedFile);
     };
 
@@ -117,13 +172,13 @@ const Upload = ({ onComplete = () => {} }: UploadProps) => {
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                 >
-                    <input 
-                    type="file" 
-                    className="drop-input" 
-                    accept='.jpg,.jpeg,.png' 
-                    disabled={!isSignedIn}
-                    onChange={onChange}>
-                    </input>
+                    <input
+                        type="file"
+                        className="drop-input"
+                        accept={ACCEPT_ATTRIBUTE}
+                        disabled={!isSignedIn}
+                        onChange={onChange}
+                    />
                     <div className="drop-content">
                         <div className="drop-icon">
                             <UploadIcon size={20}></UploadIcon>
@@ -140,6 +195,7 @@ const Upload = ({ onComplete = () => {} }: UploadProps) => {
                         <p className="help">
                             Maximum file size 50 MB.
                         </p>
+                        {errorMessage && <p className="help text-red-500">{errorMessage}</p>}
                     </div>
                 </div>
             ):(

@@ -16,7 +16,8 @@ export default function Home() {
   const navigate  = useNavigate();
   const handleUploadComplete = async(base64Image: string) => {
     const newId = Date.now().toString();
-    navigate(`/visualize/${newId}`);
+    sessionStorage.setItem(`roomify:source:${newId}`, base64Image);
+    navigate(`/visualize/${newId}`, { state: { image: base64Image } });
     return true;
   }
   return (
