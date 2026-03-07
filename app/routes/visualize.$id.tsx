@@ -1,142 +1,83 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router";
-import { PUTER_WORKER_URL } from "lib/constants";
+import type { Route } from "./+types/visualize.$id";
+import { useLoaderData, useLocation } from "react-router";
 
-type VisualizeLocationState = {
-  image?: string;
+const PROJECTS_STORAGE_KEY = "roomify:projects";
+
+type VisualizeLoaderData = {
+  name: string | null;
+  initialImage: string | null;
 };
 
-type VisualizationData = {
-  id: string;
-  image: string;
+const getProjectFromStorage = (id: string): DesignItem | null => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(PROJECTS_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+
+    const match = parsed.find((item) => {
+      if (!item || typeof item !== "object") return false;
+      return (item as Partial<DesignItem>).id === id;
+    }) as Partial<DesignItem> | undefined;
+
+    if (!match || typeof match.sourceImage !== "string") return null;
+
+    return {
+      id: typeof match.id === "string" ? match.id : id,
+      name: typeof match.name === "string" ? match.name : null,
+      sourceImage: match.sourceImage,
+      renderedImage: typeof match.renderedImage === "string" ? match.renderedImage : null,
+      timestamp: typeof match.timestamp === "number" ? match.timestamp : Date.now(),
+      sourcePath: match.sourcePath ?? null,
+      renderedPath: match.renderedPath ?? null,
+      publicPath: match.publicPath ?? null,
+      ownerId: match.ownerId ?? null,
+      sharedBy: match.sharedBy ?? null,
+      sharedAt: match.sharedAt ?? null,
+      isPublic: match.isPublic ?? false,
+    };
+  } catch (error) {
+    console.error("Failed to read project from storage", error);
+    return null;
+  }
 };
 
-const getVisualization = async (
-  id: string,
-  storageKey: string,
-  locationImage?: string,
-): Promise<VisualizationData> => {
-  if (locationImage) {
-    sessionStorage.setItem(storageKey, locationImage);
-    return { id, image: locationImage };
-  }
+export async function clientLoader({
+  params,
+}: Route.ClientLoaderArgs): Promise<VisualizeLoaderData> {
+  const id = params.id;
+  if (!id) return { name: null, initialImage: null };
 
-  const savedImage = sessionStorage.getItem(storageKey);
-  if (savedImage) {
-    return { id, image: savedImage };
-  }
+  const project = getProjectFromStorage(id);
+  if (!project) return { name: null, initialImage: null };
 
-  const apiEndpoints = [
-    `/api/visualizations/${id}`,
-    PUTER_WORKER_URL ? `${PUTER_WORKER_URL}/projects/${id}` : null,
-  ].filter(Boolean) as string[];
-
-  for (const endpoint of apiEndpoints) {
-    try {
-      const response = await fetch(endpoint);
-      if (!response.ok) continue;
-
-      const payload = (await response.json()) as {
-        image?: string;
-        sourceImage?: string;
-      };
-
-      const fetchedImage = payload.image ?? payload.sourceImage ?? null;
-      if (!fetchedImage) continue;
-
-      sessionStorage.setItem(storageKey, fetchedImage);
-      return { id, image: fetchedImage };
-    } catch {
-      // Ignore endpoint errors and try the next source.
-    }
-  }
-
-  throw new Error("No uploaded image found for this visualization.");
-};
+  return {
+    name: project.name ?? null,
+    initialImage: project.sourceImage ?? null,
+  };
+}
 
 export default function VisualizeId() {
-  const { id } = useParams();
+  const loaderData = useLoaderData<typeof clientLoader>();
   const location = useLocation();
-  const state = location.state as VisualizeLocationState | null;
-
-  const storageKey = useMemo(() => {
-    if (!id) return null;
-    return `roomify:source:${id}`;
-  }, [id]);
-
-  const [visualization, setVisualization] = useState<VisualizationData | null>(
-    null,
-  );
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id || !storageKey) {
-      setIsLoading(false);
-      setErrorMessage("Missing visualize id.");
-      return;
-    }
-
-    let isMounted = true;
-
-    const loadVisualization = async () => {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const data = await getVisualization(id, storageKey, state?.image);
-        if (!isMounted) return;
-        setVisualization(data);
-      } catch (error) {
-        if (!isMounted) return;
-        setVisualization(null);
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "Failed to load this visualization.",
-        );
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadVisualization();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [id, storageKey, state?.image]);
-
-  if (!id) {
-    return <div>Missing visualize id.</div>;
-  }
-
-  if (isLoading) {
-    return (
-      <div>
-        <p>Loading visualization...</p>
-      </div>
-    );
-  }
-
-  if (errorMessage || !visualization?.image) {
-    return (
-      <div>
-        <p>{errorMessage ?? "No uploaded image found for this project."}</p>
-        <Link to="/">Upload a floor plan</Link>
-      </div>
-    );
-  }
+  const state = (location.state as VisualizerLocationState | null) ?? null;
+  const initialImage = state?.initialImage ?? loaderData.initialImage;
+  const name = state?.name ?? loaderData.name;
 
   return (
-    <main>
-      <h1>Visualize {visualization.id}</h1>
-      <img
-        src={visualization.image}
-        alt={`Uploaded floor plan ${visualization.id}`}
-      />
-    </main>
+    <section>
+      <h1>{name || "Untitled Project"}</h1>
+      <div className="visualizer">
+        {initialImage && (
+          <div className="image-container">
+            <h2>Source Image</h2>
+            <img src={initialImage} alt="source" />
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
