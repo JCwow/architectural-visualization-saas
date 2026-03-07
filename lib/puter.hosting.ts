@@ -7,18 +7,25 @@ type HostingConfig = {
 type HostingAsset = {
     url: string;
 }
+
+type KvWithPut = {
+    put: (key: string, value: unknown) => Promise<unknown>;
+}
+
 export const getOrCreateHostingConfig = async (): Promise<HostingConfig | null> => {
-    const existing = (await puter.kv.get(HOSTING_CONFIG_KEY)) as HostingConfig | null; 
-    if(existing?.subdomain) return {
-        subdomain: existing.subdomain
-    }
-    const subdomain = createHostingSlug();
     try{
+        const existing = (await puter.kv.get(HOSTING_CONFIG_KEY)) as HostingConfig | null;
+        if(existing?.subdomain) {
+            return { subdomain: existing.subdomain };
+        }
+
+        const subdomain = createHostingSlug();
         const created = await puter.hosting.create(subdomain, '.');
-        const record = {subdomain: created.subdomain};
+        const record = { subdomain: created.subdomain };
+        await (puter.kv as unknown as KvWithPut).put(HOSTING_CONFIG_KEY, record);
         return record;
     }catch(e){
-        console.warn(`Could not find subdomain: ${e}`);
+        console.warn(`Failed to get or create hosting config: ${e}`);
         return null;
     }
 }

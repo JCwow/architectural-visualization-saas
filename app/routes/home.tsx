@@ -5,8 +5,68 @@ import Button from "components/ui/Button";
 import { Layers, Clock } from "lucide-react";
 import Upload from "components/Upload";
 import { useNavigate } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createProject } from "lib/puter.action";
+
+const PROJECTS_STORAGE_KEY = "roomify:projects";
+
+const toValidProject = (value: unknown): DesignItem | null => {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<DesignItem>;
+
+  if (
+    typeof candidate.id !== "string" ||
+    typeof candidate.sourceImage !== "string" ||
+    typeof candidate.timestamp !== "number"
+  ) {
+    return null;
+  }
+
+  if (candidate.name != null && typeof candidate.name !== "string") return null;
+  if (candidate.renderedImage != null && typeof candidate.renderedImage !== "string") return null;
+
+  return {
+    id: candidate.id,
+    name: candidate.name ?? null,
+    sourceImage: candidate.sourceImage,
+    renderedImage: candidate.renderedImage ?? null,
+    timestamp: candidate.timestamp,
+    sourcePath: candidate.sourcePath ?? null,
+    renderedPath: candidate.renderedPath ?? null,
+    publicPath: candidate.publicPath ?? null,
+    ownerId: candidate.ownerId ?? null,
+    sharedBy: candidate.sharedBy ?? null,
+    sharedAt: candidate.sharedAt ?? null,
+    isPublic: candidate.isPublic ?? false,
+  };
+};
+
+const readPersistedProjects = (): DesignItem[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROJECTS_STORAGE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item) => toValidProject(item))
+      .filter((item): item is DesignItem => Boolean(item));
+  } catch (error) {
+    console.error("Failed to read saved projects", error);
+    return [];
+  }
+};
+
+const persistProjects = (items: DesignItem[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(items));
+  } catch (error) {
+    console.error("Failed to persist projects", error);
+  }
+};
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "New React Router App" },
@@ -17,6 +77,12 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const navigate  = useNavigate();
   const [projects, setProjects] = useState<DesignItem[]>([]);
+  useEffect(() => {
+    const savedProjects = readPersistedProjects();
+    if (savedProjects.length === 0) return;
+    setProjects(savedProjects);
+  }, []);
+
   const handleUploadComplete = async(based64Image: string) => {
     const newId = Date.now().toString();
     const name = `Residence ${newId}`;
@@ -30,13 +96,16 @@ export default function Home() {
       console.error("Failed to create project");
       return false;
     }
-    setProjects((prev) => [
-      newItem,
-      ...prev
-    ]);
+    setProjects((prev) => {
+      const nextProjects = [saved, ...prev].filter(
+        (project, index, all) => all.findIndex((item) => item.id === project.id) === index,
+      );
+      persistProjects(nextProjects);
+      return nextProjects;
+    });
 
     // sessionStorage.setItem(`roomify:source:${newId}`, based64Image);
-    navigate(`/visualize/${newId}`, { 
+    navigate(`/visualize/${saved.id}`, { 
       state: { 
         initialImage: saved.sourceImage,
         initialRendered:  saved.renderedImage || null,

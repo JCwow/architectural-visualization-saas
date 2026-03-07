@@ -47,7 +47,7 @@ type RenderCompletePayload = {
 
 type VisualizerLocationState = {
     initialImage?: string;
-    initialRender?: string | null;
+    initialRendered?: string | null;
     ownerId?: string | null;
     name?: string | null;
     sharedBy?: string | null;
@@ -61,7 +61,7 @@ interface VisualizerProps {
     onUnshare?: (image: string) => Promise<void> | void;
     projectName?: string;
     projectId?: string;
-    initialRender?: string | null;
+    initialRendered?: VisualizerLocationState["initialRendered"];
     isPublic?: boolean;
     sharedBy?: string | null;
     canUnshare?: boolean;
@@ -93,6 +93,8 @@ type AuthContext = {
     signIn: () => Promise<boolean>;
     signOut: () => Promise<boolean>;
 };
+
+type AuthContent = AuthContext;
 
 type AuthRequiredModalProps = {
     isOpen: boolean;
