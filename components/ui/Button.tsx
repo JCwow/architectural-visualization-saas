@@ -4,7 +4,7 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "outline";
 type ButtonSize = "sm" | "md" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  varient?: ButtonVariant;
+  variant?: ButtonVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
   className?: string;
@@ -12,7 +12,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const Button = ({
-  varient = "primary",
+  variant: varient = "primary",
   size = "md",
   fullWidth = false,
   className = "",

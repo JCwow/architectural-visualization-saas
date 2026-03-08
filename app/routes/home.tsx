@@ -129,7 +129,7 @@ export default function Home() {
         </p>
         <div className="actions">
           <a href="#upload" className="cta">Start Building <ArrowRight className="icon"></ArrowRight></a>
-          <Button varient="outline" size="lg" className="demo">Watch Demo</Button>
+          <Button variant="outline" size="lg" className="demo">Watch Demo</Button>
         </div>
         <div id="upload" className="upload-shell">
           <div className="grid-overlay"></div>
