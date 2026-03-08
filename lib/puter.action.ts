@@ -1,7 +1,7 @@
 import puter from "@heyputer/puter.js";
 import {getOrCreateHostingConfig, uploadImageToHosting} from "./puter.hosting";
 import {isHostedUrl} from "./utils";
-import {PUTER_WORKER_URL} from "./constants";
+import {PUTER_WORKER_PROXY_PATH} from "./constants";
 
 export const signIn = async () => await puter.auth.signIn();
 
@@ -15,11 +15,12 @@ export const getCurrentUser = async () => {
     }
 }
 
+const execWorker = (path: string, init: RequestInit) =>
+    // Use a same-origin proxy so Puter's auth header never triggers a browser CORS
+    // preflight against the worker domain.
+    puter.workers.exec(`${PUTER_WORKER_PROXY_PATH}${path}`, init);
+
 export const createProject = async ({ item, visibility = "private" }: CreateProjectParams): Promise<DesignItem | null | undefined> => {
-    if(!PUTER_WORKER_URL) {
-        console.warn('Missing VITE_PUTER_WORKER_URL; skip history fetch;');
-        return null;
-    }
     const projectId = item.id;
 
     const hosting = await getOrCreateHostingConfig();
@@ -60,8 +61,9 @@ export const createProject = async ({ item, visibility = "private" }: CreateProj
     }
 
     try {
-        const response = await puter.workers.exec(`${PUTER_WORKER_URL}/api/projects/save`, {
+        const response = await execWorker("/projects/save", {
             method: 'POST',
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 project: payload,
                 visibility
@@ -83,13 +85,8 @@ export const createProject = async ({ item, visibility = "private" }: CreateProj
 }
 
 export const getProjects = async () => {
-    if(!PUTER_WORKER_URL) {
-        console.warn('Missing VITE_PUTER_WORKER_URL; skip history fetch;');
-        return []
-    }
-
     try {
-        const response = await puter.workers.exec(`${PUTER_WORKER_URL}/api/projects/list`, { method: 'GET' });
+        const response = await execWorker("/projects/list", { method: 'GET' });
 
         if(!response.ok) {
             console.error('Failed to fetch history', await response.text());
@@ -106,18 +103,12 @@ export const getProjects = async () => {
 }
 
 export const getProjectById = async ({ id }: { id: string }) => {
-    if (!PUTER_WORKER_URL) {
-        console.warn("Missing VITE_PUTER_WORKER_URL; skipping project fetch.");
-        return null;
-    }
-
     console.log("Fetching project with ID:", id);
 
     try {
-        const response = await puter.workers.exec(
-            `${PUTER_WORKER_URL}/api/projects/get?id=${encodeURIComponent(id)}`,
-            { method: "GET" },
-        );
+        const response = await execWorker(`/projects/get?id=${encodeURIComponent(id)}`, {
+            method: "GET",
+        });
 
         console.log("Fetch project response:", response);
 

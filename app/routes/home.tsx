@@ -5,8 +5,9 @@ import Button from "components/ui/Button";
 import { Layers, Clock } from "lucide-react";
 import Upload from "components/Upload";
 import { useNavigate } from "react-router";
-import { useEffect, useState } from "react";
-import { createProject } from "lib/puter.action";
+import { useEffect, useState, useRef } from "react";
+import { createProject, getProjects } from "lib/puter.action";
+import { is } from "drizzle-orm";
 
 const PROJECTS_STORAGE_KEY = "roomify:projects";
 
@@ -77,42 +78,56 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const navigate  = useNavigate();
   const [projects, setProjects] = useState<DesignItem[]>([]);
-  useEffect(() => {
-    const savedProjects = readPersistedProjects();
-    if (savedProjects.length === 0) return;
-    setProjects(savedProjects);
-  }, []);
+  const isCreatingProjectRef = useRef(false);
 
   const handleUploadComplete = async(based64Image: string) => {
-    const newId = Date.now().toString();
-    const name = `Residence ${newId}`;
-    const newItem = {
-      id: newId, name, sourceImage: based64Image, 
-      renderedImage: undefined,
-      timestamp: Date.now()
-    }
-    const saved = await createProject({item: newItem, visibility: 'private'});
-    if(!saved){
-      console.error("Failed to create project");
-      return false;
-    }
-    setProjects((prev) => {
-      const nextProjects = [saved, ...prev].filter(
-        (project, index, all) => all.findIndex((item) => item.id === project.id) === index,
-      );
-      persistProjects(nextProjects);
-      return nextProjects;
-    });
+    try{
+      if(isCreatingProjectRef.current) return false;
+      isCreatingProjectRef.current = true;
+      const newId = Date.now().toString();
+      const name = `Residence ${newId}`;
+      const newItem = {
+        id: newId, name, sourceImage: based64Image, 
+        renderedImage: undefined,
+        timestamp: Date.now()
+      }
+      const saved = await createProject({item: newItem, visibility: 'private'});
+      if(!saved){
+        console.error("Failed to create project");
+        return false;
+      }
+      setProjects((prev) => {
+        const nextProjects = [saved, ...prev].filter(
+          (project, index, all) => all.findIndex((item) => item.id === project.id) === index,
+        );
+        persistProjects(nextProjects);
+        return nextProjects;
+      });
 
-    // sessionStorage.setItem(`roomify:source:${newId}`, based64Image);
-    navigate(`/visualize/${saved.id}`, { 
-      state: { 
-        initialImage: saved.sourceImage,
-        initialRendered:  saved.renderedImage || null,
-        name
-      } });
-    return true;
+      // sessionStorage.setItem(`roomify:source:${newId}`, based64Image);
+      navigate(`/visualize/${saved.id}`, { 
+        state: { 
+          initialImage: saved.sourceImage,
+          initialRendered:  saved.renderedImage || null,
+          name
+        } });
+        return true;
+    }finally{
+      isCreatingProjectRef.current = false;
+    }
+    
   }
+
+  useEffect(() => {
+    const fetchProjects = async() => {
+      const items = await getProjects();
+      const nextProjects = items?.length ? items : [];
+      persistProjects(nextProjects);
+      setProjects(nextProjects);
+    }
+    fetchProjects();
+  }, [])
+
   return (
     <div className="home">
       <Navbar></Navbar>
@@ -155,7 +170,12 @@ export default function Home() {
           </div>
           <div className="projects-grid">
             {projects.map(({ id, name, renderedImage, sourceImage, timestamp }) => (
-              <div key={id} className="project-card group">
+              <button
+                key={id}
+                type="button"
+                className="project-card group w-full text-left"
+                onClick={() => navigate(`/visualize/${id}`)}
+              >
                 <div className="preview">
                   <img 
                   src={renderedImage || sourceImage} 
@@ -178,7 +198,7 @@ export default function Home() {
                     <ArrowRight size={18}></ArrowRight>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

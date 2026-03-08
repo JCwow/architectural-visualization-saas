@@ -8,8 +8,9 @@ type HostingAsset = {
     url: string;
 }
 
-type KvWithPut = {
-    put: (key: string, value: unknown) => Promise<unknown>;
+type KvWithWrite = {
+    set?: (key: string, value: unknown) => Promise<unknown>;
+    put?: (key: string, value: unknown) => Promise<unknown>;
 }
 
 export const getOrCreateHostingConfig = async (): Promise<HostingConfig | null> => {
@@ -22,7 +23,14 @@ export const getOrCreateHostingConfig = async (): Promise<HostingConfig | null> 
         const subdomain = createHostingSlug();
         const created = await puter.hosting.create(subdomain, '.');
         const record = { subdomain: created.subdomain };
-        await (puter.kv as unknown as KvWithPut).put(HOSTING_CONFIG_KEY, record);
+        const kv = puter.kv as unknown as KvWithWrite;
+        if (typeof kv.set === "function") {
+            await kv.set(HOSTING_CONFIG_KEY, record);
+        } else if (typeof kv.put === "function") {
+            await kv.put(HOSTING_CONFIG_KEY, record);
+        } else {
+            console.warn("Puter KV does not support set/put; hosting config is not persisted.");
+        }
         return record;
     }catch(e){
         console.warn(`Failed to get or create hosting config: ${e}`);
