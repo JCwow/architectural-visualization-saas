@@ -64,8 +64,24 @@ const proxyRequest = async (request: Request, splat?: string) => {
     init.body = await request.text();
   }
 
-  const response = await fetch(target, init);
-  return toProxyResponse(response);
+  try {
+    const response = await fetch(target, init);
+
+    if (!response.ok) {
+      return jsonResponse(response.status, {
+        error: "Upstream error",
+        statusText: response.statusText,
+        body: await response.text(),
+      });
+    }
+
+    return toProxyResponse(response);
+  } catch (error) {
+    return jsonResponse(502, {
+      error: "Upstream fetch failed",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) =>

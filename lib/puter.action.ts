@@ -1,7 +1,7 @@
 import puter from "@heyputer/puter.js";
 import {getOrCreateHostingConfig, uploadImageToHosting} from "./puter.hosting";
 import {isHostedUrl} from "./utils";
-import {PUTER_WORKER_PROXY_PATH, PUTER_WORKER_URL} from "./constants";
+import {PUTER_WORKER_PROXY_PATH} from "./constants";
 
 export const signIn = async () => await puter.auth.signIn();
 
@@ -21,10 +21,6 @@ const execWorker = (path: string, init: RequestInit) =>
     puter.workers.exec(`${PUTER_WORKER_PROXY_PATH}${path}`, init);
 
 export const createProject = async ({ item, visibility = "private" }: CreateProjectParams): Promise<DesignItem | null | undefined> => {
-    if(!PUTER_WORKER_URL) {
-        console.warn('Missing VITE_PUTER_WORKER_URL; skip history fetch;');
-        return null;
-    }
     const projectId = item.id;
 
     const hosting = await getOrCreateHostingConfig();
@@ -89,11 +85,6 @@ export const createProject = async ({ item, visibility = "private" }: CreateProj
 }
 
 export const getProjects = async () => {
-    if(!PUTER_WORKER_URL) {
-        console.warn('Missing VITE_PUTER_WORKER_URL; skip history fetch;');
-        return []
-    }
-
     try {
         const response = await execWorker("/projects/list", { method: 'GET' });
 
@@ -112,11 +103,6 @@ export const getProjects = async () => {
 }
 
 export const getProjectById = async ({ id }: { id: string }) => {
-    if (!PUTER_WORKER_URL) {
-        console.warn("Missing VITE_PUTER_WORKER_URL; skipping project fetch.");
-        return null;
-    }
-
     console.log("Fetching project with ID:", id);
 
     try {

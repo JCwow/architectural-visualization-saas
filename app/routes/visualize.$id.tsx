@@ -117,16 +117,30 @@ export default function VisualizeId() {
     let isMounted = true;
     const loadProject = async() => {
       if(!id){
-        setIsProjectLoading(false);
+        if(isMounted){
+          setIsProjectLoading(false);
+        }
         return;
       }
-      setIsProjectLoading(true);
-      const fetchedProject = await getProjectById({id});
-      if(!isMounted) return;
-      setProject(fetchedProject);
-      setCurrentImage(fetchedProject?.renderedImage || null);
-      setIsProjectLoading(false);
-      hasInitialGenerated.current = false;
+      if(isMounted){
+        setIsProjectLoading(true);
+      }
+      try{
+        const fetchedProject = await getProjectById({id});
+        if(!isMounted) return;
+        setProject(fetchedProject);
+        setCurrentImage(fetchedProject?.renderedImage || null);
+        hasInitialGenerated.current = false;
+      }catch(error){
+        console.error('Failed to load project:', error);
+        if(!isMounted) return;
+        setProject(null);
+        setCurrentImage(null);
+      }finally{
+        if(isMounted){
+          setIsProjectLoading(false);
+        }
+      }
     };
     loadProject();
     return () => {
@@ -167,7 +181,7 @@ export default function VisualizeId() {
             <div className="panel-header">
               <div className="panel-meta">
                 <p>Project</p>
-                <h2>{project?.name || `Residence ${id}`}</h2>
+                <h2>{project?.name ?? `Residence${id ? ` ${id}` : ""}`}</h2>
                 <p className="note">Created by Banana</p>
               </div>
               <div className="panel-actions">

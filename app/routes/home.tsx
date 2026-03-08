@@ -121,7 +121,9 @@ export default function Home() {
   useEffect(() => {
     const fetchProjects = async() => {
       const items = await getProjects();
-      setProjects(items!)
+      const nextProjects = items?.length ? items : [];
+      persistProjects(nextProjects);
+      setProjects(nextProjects);
     }
     fetchProjects();
   }, [])
@@ -168,7 +170,12 @@ export default function Home() {
           </div>
           <div className="projects-grid">
             {projects.map(({ id, name, renderedImage, sourceImage, timestamp }) => (
-              <div key={id} className="project-card group" onClick={() => navigate(`/visualize/${id}`)}>
+              <button
+                key={id}
+                type="button"
+                className="project-card group w-full text-left"
+                onClick={() => navigate(`/visualize/${id}`)}
+              >
                 <div className="preview">
                   <img 
                   src={renderedImage || sourceImage} 
@@ -191,7 +198,7 @@ export default function Home() {
                     <ArrowRight size={18}></ArrowRight>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
