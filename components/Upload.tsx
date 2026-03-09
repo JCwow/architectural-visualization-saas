@@ -8,7 +8,7 @@ type UploadProps = {
 }
 
 const ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png'];
-const ACCEPT_ATTRIBUTE = '.jpg,.jpeg,.png';
+const ACCEPT_ATTRIBUTE = '.jpg,.jpeg,.png,.webp';
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 
 const Upload = ({ onComplete = () => {} }: UploadProps) => {
