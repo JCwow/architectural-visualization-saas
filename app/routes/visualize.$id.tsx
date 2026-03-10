@@ -4,7 +4,8 @@ import {useRef, useState, useEffect} from 'react'
 import { generate3DView } from "lib/ai.action";
 import { Box, Download, X, Share2, RefreshCcw} from "lucide-react";
 import Button from "components/ui/Button";
-import { createProject, getProjectById } from "lib/puter.action";
+import { SHARE_STATUS_RESET_DELAY_MS } from "lib/constants";
+import { createProject, getProjectById, shareProject } from "lib/puter.action";
 import { ReactCompareSlider, ReactCompareSliderImage } from "react-compare-slider";
 const PROJECTS_STORAGE_KEY = "roomify:projects";
 
@@ -50,6 +51,35 @@ const getProjectFromStorage = (id: string): DesignItem | null => {
   }
 };
 
+const persistProjects = (items: DesignItem[]) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(items));
+  } catch (error) {
+    console.error("Failed to persist projects", error);
+  }
+};
+
+const upsertPersistedProject = (item: DesignItem) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    const raw = window.localStorage.getItem(PROJECTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const items = Array.isArray(parsed) ? parsed : [];
+    const nextProjects = [item, ...items.filter((candidate) => candidate?.id !== item.id)];
+    persistProjects(nextProjects);
+  } catch (error) {
+    console.error("Failed to update saved project", error);
+  }
+};
+
+const toPublicShareUrl = (publicPath: string) => {
+  if (typeof window === "undefined") return publicPath;
+  return new URL(publicPath, window.location.origin).toString();
+};
+
 export async function clientLoader({
   params,
 }: Route.ClientLoaderArgs): Promise<VisualizeLoaderData> {
@@ -83,6 +113,8 @@ export default function VisualizeId() {
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(initialRender);
+  const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   
   const handleBack = () => navigate('/');
   const handleExport = async () => {
@@ -124,6 +156,7 @@ export default function VisualizeId() {
         }
         const saved = await createProject({item: updatedItem, visibility: 'private'})
         if(saved){
+          upsertPersistedProject(saved);
           setProject(saved);
           setCurrentImage(saved.renderedImage || result.renderedImage);
         }
@@ -151,12 +184,16 @@ export default function VisualizeId() {
         if(!isMounted) return;
         setProject(fetchedProject);
         setCurrentImage(fetchedProject?.renderedImage || null);
+        if (fetchedProject) {
+          upsertPersistedProject(fetchedProject);
+        }
         hasInitialGenerated.current = false;
       }catch(error){
         console.error('Failed to load project:', error);
         if(!isMounted) return;
-        setProject(null);
-        setCurrentImage(null);
+        const fallbackProject = id ? getProjectFromStorage(id) : null;
+        setProject(fallbackProject);
+        setCurrentImage(fallbackProject?.renderedImage || null);
       }finally{
         if(isMounted){
           setIsProjectLoading(false);
@@ -183,7 +220,87 @@ export default function VisualizeId() {
     hasInitialGenerated.current = true;
     void runGeneration(project);
   }, [project, isProjectLoading])
-  
+
+  useEffect(() => {
+    if (shareStatus !== "done") return;
+
+    const timeoutId = window.setTimeout(() => {
+      setShareStatus("idle");
+      setShareFeedback(null);
+    }, SHARE_STATUS_RESET_DELAY_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [shareStatus]);
+
+  const handleShare = async () => {
+    if (!project?.id || !currentImage || shareStatus === "saving") return;
+
+    setShareStatus("saving");
+    setShareFeedback(null);
+
+    try {
+      let nextProject = project;
+      let publicPath = project.publicPath ?? null;
+
+      if (!publicPath) {
+        const shared = await shareProject({ id: project.id });
+
+        if (!shared?.project || !shared.publicPath) {
+          throw new Error("Missing public share link");
+        }
+
+        nextProject = shared.project;
+        publicPath = shared.publicPath;
+        setProject(shared.project);
+        upsertPersistedProject(shared.project);
+      }
+
+      const shareUrl = toPublicShareUrl(publicPath);
+      const shareTitle = nextProject?.name ?? name ?? "Roomify Project";
+
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          await navigator.share({
+            title: shareTitle,
+            text: "Check out this Roomify visualization.",
+            url: shareUrl,
+          });
+
+          setShareStatus("done");
+          setShareFeedback("Share link ready.");
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            setShareStatus("idle");
+            return;
+          }
+        }
+      }
+
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareStatus("done");
+        setShareFeedback("Share link copied.");
+        return;
+      }
+
+      window.prompt("Copy your public share link", shareUrl);
+      setShareStatus("done");
+      setShareFeedback("Copy the share link from the dialog.");
+    } catch (error) {
+      console.error("Failed to share project:", error);
+      setShareStatus("idle");
+      setShareFeedback("Failed to share link. Please try again.");
+    }
+  };
+
+  const canShare = Boolean(project?.id && currentImage && !isProjectLoading && !isProcessing);
+  const shareLabel = shareStatus === "saving"
+    ? "Sharing..."
+    : project?.publicPath
+      ? "Copy Link"
+      : "Share";
+  const publicShareUrl = project?.publicPath ? toPublicShareUrl(project.publicPath) : null;
 
   return (
       <div className="visualizer">
@@ -214,10 +331,29 @@ export default function VisualizeId() {
                   <Download className="w-4 h-4 mr-2"></Download>
                   Export
                 </Button>
-                <Button size="sm" onClick={() => {}} className="share">
+                <Button
+                  size="sm"
+                  onClick={handleShare}
+                  className="share"
+                  disabled={!canShare || shareStatus === "saving"}>
                   <Share2 className="w-4 h-4 mr-2"></Share2>
-                  Share
+                  {shareLabel}
                 </Button>
+                {shareFeedback && (
+                  <p className="text-xs font-mono uppercase tracking-wide text-zinc-500">
+                    {shareFeedback}
+                  </p>
+                )}
+                {!shareFeedback && publicShareUrl && (
+                  <a
+                    href={publicShareUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-mono uppercase tracking-wide text-zinc-500 underline underline-offset-4"
+                  >
+                    View shared page
+                  </a>
+                )}
               </div>
             </div>
             <div className={`render-area ${isProcessing ? 'is-processing' :''}`}>
