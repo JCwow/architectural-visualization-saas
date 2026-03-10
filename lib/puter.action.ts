@@ -1,7 +1,7 @@
 import puter from "@heyputer/puter.js";
 import {getOrCreateHostingConfig, uploadImageToHosting} from "./puter.hosting";
 import {isHostedUrl} from "./utils";
-import {PUTER_WORKER_PROXY_PATH} from "./constants";
+import {PUTER_WORKER_URL} from "./constants";
 
 export const signIn = async () => await puter.auth.signIn();
 
@@ -15,10 +15,24 @@ export const getCurrentUser = async () => {
     }
 }
 
+const getWorkerUrl = (path: string) => {
+    if (!PUTER_WORKER_URL) {
+        throw new Error("Missing VITE_PUTER_WORKER_URL");
+    }
+
+    return new URL(`/api${path}`, PUTER_WORKER_URL).toString();
+}
+
 const execWorker = (path: string, init: RequestInit) =>
-    // Use a same-origin proxy so Puter's auth header never triggers a browser CORS
-    // preflight against the worker domain.
-    puter.workers.exec(`${PUTER_WORKER_PROXY_PATH}${path}`, init);
+    puter.workers.exec(getWorkerUrl(path), init);
+
+const parseJson = async <T>(response: Response): Promise<T | null> => {
+    try {
+        return (await response.json()) as T;
+    } catch {
+        return null;
+    }
+}
 
 export const createProject = async ({ item, visibility = "private" }: CreateProjectParams): Promise<DesignItem | null | undefined> => {
     const projectId = item.id;
@@ -50,7 +64,6 @@ export const createProject = async ({ item, visibility = "private" }: CreateProj
     const {
         sourcePath: _sourcePath,
         renderedPath: _renderedPath,
-        publicPath: _publicPath,
         ...rest
     } = item;
 
@@ -75,7 +88,7 @@ export const createProject = async ({ item, visibility = "private" }: CreateProj
             return null;
         }
 
-        const data = (await response.json()) as { project?: DesignItem | null }
+        const data = await parseJson<{ project?: DesignItem | null }>(response);
 
         return data?.project ?? null;
     } catch (e) {
@@ -93,7 +106,7 @@ export const getProjects = async () => {
             return [];
         }
 
-        const data = (await response.json()) as { projects?: DesignItem[] | null };
+        const data = await parseJson<{ projects?: DesignItem[] | null }>(response);
 
         return Array.isArray(data?.projects) ? data?.projects : [];
     } catch (e) {
@@ -103,25 +116,19 @@ export const getProjects = async () => {
 }
 
 export const getProjectById = async ({ id }: { id: string }) => {
-    console.log("Fetching project with ID:", id);
-
     try {
         const response = await execWorker(`/projects/get?id=${encodeURIComponent(id)}`, {
             method: "GET",
         });
-
-        console.log("Fetch project response:", response);
 
         if (!response.ok) {
             console.error("Failed to fetch project:", await response.text());
             return null;
         }
 
-        const data = (await response.json()) as {
+        const data = await parseJson<{
             project?: DesignItem | null;
-        };
-
-        console.log("Fetched project data:", data);
+        }>(response);
 
         return data?.project ?? null;
     } catch (error) {
@@ -129,3 +136,55 @@ export const getProjectById = async ({ id }: { id: string }) => {
         return null;
     }
 };
+
+export const shareProject = async ({ id }: { id: string }) => {
+    try {
+        const response = await execWorker(`/projects/share?id=${encodeURIComponent(id)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId: id }),
+        });
+
+        if (!response.ok) {
+            console.error("Failed to share project:", await response.text());
+            return null;
+        }
+
+        const data = await parseJson<{
+            shareId?: string | null;
+            publicPath?: string | null;
+            project?: DesignItem | null;
+        }>(response);
+
+        return {
+            shareId: data?.shareId ?? null,
+            publicPath: data?.publicPath ?? data?.project?.publicPath ?? null,
+            project: data?.project ?? null,
+        };
+    } catch (error) {
+        console.error("Failed to share project:", error);
+        return null;
+    }
+}
+
+export const getPublicProjectByShareId = async ({ shareId }: { shareId: string }) => {
+    try {
+        const response = await fetch(getWorkerUrl(`/projects/public?id=${encodeURIComponent(shareId)}`), {
+            method: "GET",
+        });
+
+        if (!response.ok) {
+            console.error("Failed to fetch shared project:", await response.text());
+            return null;
+        }
+
+        const data = await parseJson<{
+            project?: DesignItem | null;
+        }>(response);
+
+        return data?.project ?? null;
+    } catch (error) {
+        console.error("Failed to fetch shared project:", error);
+        return null;
+    }
+}

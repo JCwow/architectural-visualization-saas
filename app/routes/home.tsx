@@ -7,7 +7,6 @@ import Upload from "components/Upload";
 import { useNavigate } from "react-router";
 import { useEffect, useState, useRef } from "react";
 import { createProject, getProjects } from "lib/puter.action";
-import { is } from "drizzle-orm";
 
 const PROJECTS_STORAGE_KEY = "roomify:projects";
 
@@ -169,7 +168,7 @@ export default function Home() {
             </div>
           </div>
           <div className="projects-grid">
-            {projects.map(({ id, name, renderedImage, sourceImage, timestamp }) => (
+            {projects.map(({ id, name, renderedImage, sourceImage, timestamp, isPublic }) => (
               <button
                 key={id}
                 type="button"
@@ -181,7 +180,7 @@ export default function Home() {
                   src={renderedImage || sourceImage} 
                   alt="Project"></img>
                   <div className="badge">
-                    <span>Private</span>
+                    <span>{isPublic ? "Shared" : "Private"}</span>
                   </div>
                 </div>
                 <div className="card-body">

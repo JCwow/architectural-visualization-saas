@@ -7,8 +7,9 @@ type UploadProps = {
     onComplete?: (base64Data: string) => void;
 }
 
-const ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png'];
+const ACCEPTED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const ACCEPT_ATTRIBUTE = '.jpg,.jpeg,.png,.webp';
+const ACCEPTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024;
 
 const Upload = ({ onComplete = () => {} }: UploadProps) => {
@@ -34,8 +35,13 @@ const Upload = ({ onComplete = () => {} }: UploadProps) => {
     };
 
     const validateSelectedFile = (selectedFile: File): string | null => {
-        if (!ACCEPTED_MIME_TYPES.includes(selectedFile.type)) {
-            return 'Only JPG and PNG files are supported.';
+        const normalizedType = selectedFile.type.toLowerCase();
+        const normalizedName = selectedFile.name.toLowerCase();
+        const hasAcceptedMimeType = ACCEPTED_MIME_TYPES.includes(normalizedType);
+        const hasAcceptedExtension = ACCEPTED_EXTENSIONS.some((extension) => normalizedName.endsWith(extension));
+
+        if (!hasAcceptedMimeType && !hasAcceptedExtension) {
+            return 'Only JPG, PNG, and WEBP files are supported.';
         }
 
         if (selectedFile.size > MAX_UPLOAD_SIZE) {
