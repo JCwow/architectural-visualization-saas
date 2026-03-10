@@ -1,7 +1,7 @@
 import puter from "@heyputer/puter.js";
 import {getOrCreateHostingConfig, uploadImageToHosting} from "./puter.hosting";
 import {isHostedUrl} from "./utils";
-import {PUTER_WORKER_PROXY_PATH} from "./constants";
+import {PUTER_WORKER_URL} from "./constants";
 
 export const signIn = async () => await puter.auth.signIn();
 
@@ -15,10 +15,16 @@ export const getCurrentUser = async () => {
     }
 }
 
+const getWorkerUrl = (path: string) => {
+    if (!PUTER_WORKER_URL) {
+        throw new Error("Missing VITE_PUTER_WORKER_URL");
+    }
+
+    return new URL(`/api${path}`, PUTER_WORKER_URL).toString();
+}
+
 const execWorker = (path: string, init: RequestInit) =>
-    // Use a same-origin proxy so Puter's auth header never triggers a browser CORS
-    // preflight against the worker domain.
-    puter.workers.exec(`${PUTER_WORKER_PROXY_PATH}${path}`, init);
+    puter.workers.exec(getWorkerUrl(path), init);
 
 const parseJson = async <T>(response: Response): Promise<T | null> => {
     try {
@@ -163,7 +169,7 @@ export const shareProject = async ({ id }: { id: string }) => {
 
 export const getPublicProjectByShareId = async ({ shareId }: { shareId: string }) => {
     try {
-        const response = await fetch(`${PUTER_WORKER_PROXY_PATH}/projects/public?id=${encodeURIComponent(shareId)}`, {
+        const response = await fetch(getWorkerUrl(`/projects/public?id=${encodeURIComponent(shareId)}`), {
             method: "GET",
         });
 
